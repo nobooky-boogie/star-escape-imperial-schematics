@@ -1,0 +1,746 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>STAR ESCAPE: Imperial Schematics</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      background-color: #020208;
+      color: #ffe81f; /* スターウォーズ・イエロー */
+      font-family: 'Consolas', 'Segoe UI', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    /* 20:9 アスペクト比コンテナ */
+    #game-container {
+      position: relative;
+      width: 100vw;
+      max-width: 450px;
+      height: 100vh;
+      max-height: 1012.5px; /* 450 * (20 / 9) */
+      aspect-ratio: 9 / 20;
+      background-color: #000005;
+      box-shadow: 0 0 25px rgba(255, 232, 31, 0.25);
+      border: 2px solid #333311;
+      overflow: hidden;
+    }
+
+    canvas {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    /* UI オーバーレイ */
+    .overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(0, 0, 0, 0.88);
+      z-index: 10;
+      padding: 24px;
+      text-align: center;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    h1 {
+      font-size: 24px;
+      color: #ffe81f;
+      margin-bottom: 12px;
+      letter-spacing: 3px;
+      text-shadow: 0 0 12px rgba(255, 232, 31, 0.6);
+      font-weight: 900;
+    }
+
+    p {
+      font-size: 14px;
+      color: #cccccc;
+      margin-bottom: 20px;
+      line-height: 1.6;
+    }
+
+    .btn {
+      background: #ffe81f;
+      color: #000000;
+      border: none;
+      padding: 14px 32px;
+      font-size: 16px;
+      font-weight: bold;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 0 15px rgba(255, 232, 31, 0.5);
+      transition: all 0.2s ease;
+      letter-spacing: 1px;
+    }
+
+    .btn:hover {
+      background: #ffffff;
+      box-shadow: 0 0 25px rgba(255, 255, 255, 0.9);
+      transform: scale(1.05);
+    }
+
+    /* HUD (ゲーム中表示) */
+    #hud {
+      position: absolute;
+      top: 15px;
+      left: 15px;
+      right: 15px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      pointer-events: none;
+      z-index: 5;
+    }
+
+    .hud-title {
+      font-size: 11px;
+      color: #ffe81f;
+      font-weight: bold;
+      letter-spacing: 1px;
+    }
+
+    .progress-bar-bg {
+      width: 100%;
+      height: 10px;
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 5px;
+      border: 1px solid rgba(255, 232, 31, 0.4);
+      overflow: hidden;
+    }
+
+    #progress-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #ffe81f, #00e5ff);
+      transition: width 0.1s linear;
+    }
+
+    #boost-status {
+      font-size: 13px;
+      font-weight: bold;
+      height: 18px;
+      text-align: center;
+      text-shadow: 0 0 8px currentColor;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD -->
+    <div id="hud">
+      <div class="hud-title">HYPERDRIVE DISTANCE TO BASE</div>
+      <div class="progress-bar-bg">
+        <div id="progress-fill"></div>
+      </div>
+      <div id="boost-status"></div>
+    </div>
+
+    <!-- スタート画面 -->
+    <div id="start-screen" class="overlay">
+      <h1>STAR ESCAPE</h1>
+      <p style="color: #ffe81f; font-size: 12px; margin-bottom: 8px;">~ IMPERIAL SCHEMATICS ~</p>
+      <p>帝国軍要塞から「デス・スター設計図」を奪取した！<br>TIEファイターの追撃と小惑星帯を突破し、反乱軍基地へ到達せよ。</p>
+      <p style="font-size: 12px; color: #00e5ff;">【新機能】青く輝く「R2エナジーポッド」に接触すると<br><b>3秒間 レインボー無敵ブースト</b>が発動！</p>
+      <button class="btn" onclick="startGame()">MAY THE FORCE BE WITH YOU</button>
+    </div>
+
+    <!-- クリア画面 -->
+    <div id="clear-screen" class="overlay hidden">
+      <h1 style="color: #00ff66; text-shadow: 0 0 15px rgba(0, 255, 102, 0.7);">VICTORY!</h1>
+      <p>無事に反乱軍基地に到達しました！<br>奪取した設計図により、銀河に平和がもたらされるでしょう。</p>
+      <button class="btn" onclick="startGame()">NEXT MISSION</button>
+    </div>
+
+    <!-- ゲームオーバー画面 -->
+    <div id="gameover-screen" class="overlay hidden">
+      <h1 style="color: #ff3333; text-shadow: 0 0 15px rgba(255, 51, 51, 0.7);">THE EMPIRE WON</h1>
+      <p>帝国軍の攻撃により撃墜されました。<br>機密データは破壊されました...</p>
+      <button class="btn" onclick="startGame()">RETRY</button>
+    </div>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const progressFill = document.getElementById('progress-fill');
+    const boostStatus = document.getElementById('boost-status');
+
+    // Canvas解像度 (20:9 アスペクト比)
+    const CANVAS_WIDTH = 450;
+    const CANVAS_HEIGHT = 1000;
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+
+    // ゲーム定数
+    const MISSION_DISTANCE = 3200; // 目的地までの距離
+    const PLAYER_SPEED = 1.0;
+    const BOOST_DURATION = 180; // 約3秒間 (60fps * 3)
+
+    // ゲーム状態
+    let gameState = 'START';
+    let distanceTraveled = 0;
+    let animationFrameId;
+    let rainbowHue = 0; // レインボーカラー用
+
+    // 入力状態
+    let isTouching = false;
+    let touchX = 0;
+    let touchY = 0;
+
+    // プレイヤー (X-Wing風)
+    const player = {
+      x: CANVAS_WIDTH / 2,
+      y: CANVAS_HEIGHT - 120,
+      width: 40,
+      height: 44,
+      lastShot: 0,
+      shotInterval: 10,
+      invincibleTimer: 0 // 無敵ブーストタイマー
+    };
+
+    // 配列管理
+    let playerBullets = [];
+    let enemyBullets = [];
+    let asteroids = []; // 障害物 (小惑星)
+    let tieFighters = []; // 敵 (TIEファイター)
+    let energyPods = []; // エナジーチャージスポット
+    let stars = [];
+
+    // 背景の星生成
+    for (let i = 0; i < 70; i++) {
+      stars.push({
+        x: Math.random() * CANVAS_WIDTH,
+        y: Math.random() * CANVAS_HEIGHT,
+        size: Math.random() * 2 + 0.5,
+        speed: Math.random() * 3 + 1
+      });
+    }
+
+    // タッチ＆マウス操作設定
+    function setupControls() {
+      const getCanvasPos = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        return {
+          x: (clientX - rect.left) * (CANVAS_WIDTH / rect.width),
+          y: (clientY - rect.top) * (CANVAS_HEIGHT / rect.height)
+        };
+      };
+
+      const handleStart = (e) => {
+        if (gameState !== 'PLAYING') return;
+        isTouching = true;
+        const pos = getCanvasPos(e);
+        touchX = pos.x;
+        touchY = pos.y;
+      };
+
+      const handleMove = (e) => {
+        if (!isTouching || gameState !== 'PLAYING') return;
+        const pos = getCanvasPos(e);
+        const dx = pos.x - touchX;
+        const dy = pos.y - touchY;
+
+        player.x += dx;
+        player.y += dy;
+
+        // 画面外移動制限
+        player.x = Math.max(player.width / 2, Math.min(CANVAS_WIDTH - player.width / 2, player.x));
+        player.y = Math.max(player.height / 2, Math.min(CANVAS_HEIGHT - player.height / 2, player.y));
+
+        touchX = pos.x;
+        touchY = pos.y;
+      };
+
+      const handleEnd = () => {
+        isTouching = false;
+      };
+
+      canvas.addEventListener('mousedown', handleStart);
+      window.addEventListener('mousemove', handleMove);
+      window.addEventListener('mouseup', handleEnd);
+
+      canvas.addEventListener('touchstart', (e) => { handleStart(e); e.preventDefault(); }, { passive: false });
+      window.addEventListener('touchmove', (e) => { handleMove(e); e.preventDefault(); }, { passive: false });
+      window.addEventListener('touchend', handleEnd);
+    }
+
+    setupControls();
+
+    // ゲーム開始/初期化
+    function startGame() {
+      gameState = 'PLAYING';
+      distanceTraveled = 0;
+      player.x = CANVAS_WIDTH / 2;
+      player.y = CANVAS_HEIGHT - 120;
+      player.invincibleTimer = 0;
+
+      playerBullets = [];
+      enemyBullets = [];
+      asteroids = [];
+      tieFighters = [];
+      energyPods = [];
+
+      document.getElementById('start-screen').classList.add('hidden');
+      document.getElementById('clear-screen').classList.add('hidden');
+      document.getElementById('gameover-screen').classList.add('hidden');
+
+      if (animationFrameId) cancelAnimationFrame(animationFrameId);
+      gameLoop();
+    }
+
+    // メインループ
+    function gameLoop() {
+      if (gameState !== 'PLAYING') return;
+
+      update();
+      render();
+
+      animationFrameId = requestAnimationFrame(gameLoop);
+    }
+
+    // 更新処理
+    function update() {
+      rainbowHue = (rainbowHue + 8) % 360; // レインボーの色更新
+
+      // 無敵ブーストタイマー制御
+      if (player.invincibleTimer > 0) {
+        player.invincibleTimer--;
+        const remainingSec = (player.invincibleTimer / 60).toFixed(1);
+        boostStatus.style.color = `hsl(${rainbowHue}, 100%, 50%)`;
+        boostStatus.innerText = `🌈 RAINBOW BOOST: ${remainingSec}s`;
+      } else {
+        boostStatus.innerText = '';
+      }
+
+      // 進捗状況
+      const currentSpeed = player.invincibleTimer > 0 ? PLAYER_SPEED * 2 : PLAYER_SPEED;
+      distanceTraveled += currentSpeed;
+      const progressRatio = Math.min(distanceTraveled / MISSION_DISTANCE, 1);
+      progressFill.style.width = `${progressRatio * 100}%`;
+
+      if (distanceTraveled >= MISSION_DISTANCE) {
+        gameState = 'CLEAR';
+        document.getElementById('clear-screen').classList.remove('hidden');
+        return;
+      }
+
+      // 星のスクロール（ブースト時はハイパースペース風に高速化）
+      const starSpeedMultiplier = player.invincibleTimer > 0 ? 4 : 1;
+      stars.forEach(star => {
+        star.y += star.speed * starSpeedMultiplier;
+        if (star.y > CANVAS_HEIGHT) {
+          star.y = 0;
+          star.x = Math.random() * CANVAS_WIDTH;
+        }
+      });
+
+      // プレイヤーショット（赤色レーザー）
+      player.lastShot++;
+      const currentInterval = player.invincibleTimer > 0 ? 5 : player.shotInterval; // ブースト時は連射速度アップ
+      if (player.lastShot >= currentInterval) {
+        // 通常は2連装、ブースト時は3方向強化レーザー
+        if (player.invincibleTimer > 0) {
+          playerBullets.push({ x: player.x, y: player.y - 20, vx: 0, vy: -16 });
+          playerBullets.push({ x: player.x - 15, y: player.y - 15, vx: -3, vy: -15 });
+          playerBullets.push({ x: player.x + 15, y: player.y - 15, vx: 3, vy: -15 });
+        } else {
+          playerBullets.push({ x: player.x - 14, y: player.y - 10, vx: 0, vy: -14 });
+          playerBullets.push({ x: player.x + 14, y: player.y - 10, vx: 0, vy: -14 });
+        }
+        player.lastShot = 0;
+      }
+
+      // プレイヤー弾移動
+      playerBullets.forEach((bullet, index) => {
+        bullet.x += bullet.vx;
+        bullet.y += bullet.vy;
+        if (bullet.y < -10 || bullet.x < 0 || bullet.x > CANVAS_WIDTH) {
+          playerBullets.splice(index, 1);
+        }
+      });
+
+      // 1. エナジーチャージスポット (補給ポッド) の生成
+      if (Math.random() < 0.006 && energyPods.length < 1) { // 出現確率
+        energyPods.push({
+          x: Math.random() * (CANVAS_WIDTH - 60) + 30,
+          y: -30,
+          radius: 18,
+          speed: 2,
+          pulse: 0
+        });
+      }
+
+      // エナジーポッド移動
+      energyPods.forEach((pod, index) => {
+        pod.y += pod.speed;
+        pod.pulse += 0.1;
+        if (pod.y > CANVAS_HEIGHT + 30) energyPods.splice(index, 1);
+      });
+
+      // 2. 小惑星 (障害物) 生成
+      if (Math.random() < 0.035) {
+        const size = Math.random() * 22 + 18;
+        asteroids.push({
+          x: Math.random() * (CANVAS_WIDTH - size) + size / 2,
+          y: -size,
+          size: size,
+          hp: Math.floor(size / 8),
+          speed: Math.random() * 2 + 1.5,
+          rot: Math.random() * Math.PI,
+          vRot: (Math.random() - 0.5) * 0.05
+        });
+      }
+
+      // 小惑星移動
+      asteroids.forEach((ast, index) => {
+        ast.y += ast.speed;
+        ast.rot += ast.vRot;
+        if (ast.y > CANVAS_HEIGHT + ast.size) asteroids.splice(index, 1);
+      });
+
+      // 3. TIEファイター (敵機) 生成
+      if (Math.random() < 0.02) {
+        tieFighters.push({
+          x: Math.random() * (CANVAS_WIDTH - 50) + 25,
+          y: -30,
+          width: 32,
+          height: 28,
+          hp: 2,
+          speed: 2.2,
+          lastShot: 0
+        });
+      }
+
+      // TIEファイター移動 & 攻撃（緑色レーザー）
+      tieFighters.forEach((enemy, eIndex) => {
+        enemy.y += enemy.speed;
+        enemy.lastShot++;
+
+        // プレイヤー狙撃弾 (ブースト中は敵の攻撃頻度低下)
+        if (enemy.lastShot > 50 && player.invincibleTimer === 0) {
+          const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
+          enemyBullets.push({
+            x: enemy.x,
+            y: enemy.y,
+            vx: Math.cos(angle) * 4.5,
+            vy: Math.sin(angle) * 4.5
+          });
+          enemy.lastShot = 0;
+        }
+
+        if (enemy.y > CANVAS_HEIGHT + 40) tieFighters.splice(eIndex, 1);
+      });
+
+      // 敵弾移動
+      enemyBullets.forEach((eb, index) => {
+        eb.x += eb.vx;
+        eb.y += eb.vy;
+        if (eb.y > CANVAS_HEIGHT + 10 || eb.x < -10 || eb.x > CANVAS_WIDTH + 10) {
+          enemyBullets.splice(index, 1);
+        }
+      });
+
+      // 当たり判定
+      checkCollisions();
+    }
+
+    // 衝突判定
+    function checkCollisions() {
+      // 0. プレイヤー vs エナジーポッド（チャージ体験）
+      energyPods.forEach((pod, pIndex) => {
+        const dist = Math.hypot(player.x - pod.x, player.y - pod.y);
+        if (dist < pod.radius + player.width / 2) {
+          // 無敵ブースト発動！
+          player.invincibleTimer = BOOST_DURATION;
+          energyPods.splice(pIndex, 1);
+        }
+      });
+
+      // 1. プレイヤー弾 vs 小惑星 & TIEファイター
+      playerBullets.forEach((pb, pbIndex) => {
+        // vs 小惑星
+        asteroids.forEach((ast, astIndex) => {
+          const dist = Math.hypot(pb.x - ast.x, pb.y - ast.y);
+          if (dist < ast.size) {
+            ast.hp--;
+            playerBullets.splice(pbIndex, 1);
+            if (ast.hp <= 0) asteroids.splice(astIndex, 1);
+          }
+        });
+
+        // vs TIEファイター
+        tieFighters.forEach((enemy, eIndex) => {
+          if (
+            pb.x > enemy.x - enemy.width / 2 &&
+            pb.x < enemy.x + enemy.width / 2 &&
+            pb.y > enemy.y - enemy.height / 2 &&
+            pb.y < enemy.y + enemy.height / 2
+          ) {
+            enemy.hp--;
+            playerBullets.splice(pbIndex, 1);
+            if (enemy.hp <= 0) tieFighters.splice(eIndex, 1);
+          }
+        });
+      });
+
+      // 無敵ブースト中は被弾判定をスキップ＆体当たりで破壊可能に！
+      if (player.invincibleTimer > 0) {
+        // 体当たりで小惑星破壊
+        asteroids.forEach((ast, astIndex) => {
+          if (Math.hypot(player.x - ast.x, player.y - ast.y) < ast.size + player.width / 2) {
+            asteroids.splice(astIndex, 1);
+          }
+        });
+        // 体当たりでTIEファイター破壊
+        tieFighters.forEach((enemy, eIndex) => {
+          if (Math.abs(player.x - enemy.x) < player.width && Math.abs(player.y - enemy.y) < player.height) {
+            tieFighters.splice(eIndex, 1);
+          }
+        });
+        return; // 無敵状態のため以下ダメージ処理を実行しない
+      }
+
+      // 2. プレイヤー vs 小惑星
+      asteroids.forEach(ast => {
+        if (Math.hypot(player.x - ast.x, player.y - ast.y) < ast.size * 0.8 + player.width / 3) {
+          triggerGameOver();
+        }
+      });
+
+      // 3. プレイヤー vs TIEファイター
+      tieFighters.forEach(enemy => {
+        if (
+          Math.abs(player.x - enemy.x) < (player.width + enemy.width) / 2.5 &&
+          Math.abs(player.y - enemy.y) < (player.height + enemy.height) / 2.5
+        ) {
+          triggerGameOver();
+        }
+      });
+
+      // 4. プレイヤー vs 敵弾
+      enemyBullets.forEach(eb => {
+        if (Math.hypot(player.x - eb.x, player.y - eb.y) < 8 + player.width / 4) {
+          triggerGameOver();
+        }
+      });
+    }
+
+    function triggerGameOver() {
+      gameState = 'GAMEOVER';
+      document.getElementById('gameover-screen').classList.remove('hidden');
+    }
+
+    // 描画処理
+    function render() {
+      // 背景ブラックアウト
+      ctx.fillStyle = '#000005';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+      // 星々の描画 (ブースト中はライン描画でハイパースペース感を演出)
+      stars.forEach(star => {
+        if (player.invincibleTimer > 0) {
+          ctx.strokeStyle = `hsl(${rainbowHue}, 80%, 70%)`;
+          ctx.lineWidth = star.size;
+          ctx.beginPath();
+          ctx.moveTo(star.x, star.y);
+          ctx.lineTo(star.x, star.y + 15);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(star.x, star.y, star.size, star.size);
+        }
+      });
+
+      // エナジーチャージスポット (R2風/ホログラムポッド) 描画
+      energyPods.forEach(pod => {
+        ctx.save();
+        ctx.translate(pod.x, pod.y);
+
+        // オーラ
+        const glowSize = pod.radius + Math.sin(pod.pulse) * 4;
+        ctx.fillStyle = 'rgba(0, 229, 255, 0.3)';
+        ctx.beginPath();
+        ctx.arc(0, 0, glowSize + 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 本体ポッド
+        ctx.fillStyle = '#00e5ff';
+        ctx.beginPath();
+        ctx.arc(0, 0, pod.radius, 0, Math.PI * 2);
+        ctx.fill();
+
+        // アイコン (R2風模様)
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(-6, -6, 12, 12);
+        ctx.fillStyle = '#ff1744';
+        ctx.beginPath();
+        ctx.arc(0, -2, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      });
+
+      // 小惑星 (Asteroid) 描画
+      asteroids.forEach(ast => {
+        ctx.save();
+        ctx.translate(ast.x, ast.y);
+        ctx.rotate(ast.rot);
+
+        ctx.fillStyle = '#554433';
+        ctx.strokeStyle = '#887766';
+        ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        const pts = 7;
+        for (let i = 0; i < pts; i++) {
+          const a = (i / pts) * Math.PI * 2;
+          const r = ast.size * (0.8 + Math.sin(i * 3) * 0.2);
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.restore();
+      });
+
+      // TIEファイター (敵機) 描画
+      tieFighters.forEach(enemy => {
+        ctx.save();
+        ctx.translate(enemy.x, enemy.y);
+
+        // 両翼 (H型パネル)
+        ctx.fillStyle = '#3a3d40';
+        ctx.fillRect(-enemy.width / 2, -enemy.height / 2, 6, enemy.height);
+        ctx.fillRect(enemy.width / 2 - 6, -enemy.height / 2, 6, enemy.height);
+
+        // 中央アーム & コックピット
+        ctx.fillStyle = '#9aa0a6';
+        ctx.fillRect(-enemy.width / 2, -3, enemy.width, 6);
+
+        ctx.beginPath();
+        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 窓 (赤)
+        ctx.fillStyle = '#ff1744';
+        ctx.beginPath();
+        ctx.arc(0, 0, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      });
+
+      // 敵の緑色ブラスターレーザー
+      ctx.fillStyle = '#00ff66';
+      ctx.shadowColor = '#00ff66';
+      ctx.shadowBlur = 8;
+      enemyBullets.forEach(eb => {
+        ctx.beginPath();
+        ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2);
+        ctx.fill();
+      });
+      ctx.shadowBlur = 0; // Shadowリセット
+
+      // プレイヤー（X-Wing風自機）描画
+      ctx.save();
+      ctx.translate(player.x, player.y);
+
+      // ★ 無敵ブースト時のレインボー演出 ★
+      let shipColor = '#e0e0e0';
+      let wingColor = '#c0c0c0';
+      let laserGlow = '#ff3300';
+
+      if (player.invincibleTimer > 0) {
+        shipColor = `hsl(${rainbowHue}, 100%, 60%)`;
+        wingColor = `hsl(${(rainbowHue + 40) % 360}, 100%, 50%)`;
+        laserGlow = `hsl(${(rainbowHue + 180) % 360}, 100%, 50%)`;
+
+        // レインボーオーラ
+        ctx.fillStyle = `hsla(${rainbowHue}, 100%, 50%, 0.35)`;
+        ctx.beginPath();
+        ctx.arc(0, 0, 36 + Math.sin(rainbowHue) * 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // バリアリング
+        ctx.strokeStyle = `hsl(${rainbowHue}, 100%, 70%)`;
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(0, 0, 32, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // X-Wing 主翼
+      ctx.fillStyle = wingColor;
+      ctx.fillRect(-player.width / 2, 0, player.width, 8);
+      // 先端のレーザー砲身
+      ctx.fillStyle = '#555555';
+      ctx.fillRect(-player.width / 2 - 2, -15, 4, 25);
+      ctx.fillRect(player.width / 2 - 2, -15, 4, 25);
+
+      // 機体中央ノーズ
+      ctx.fillStyle = shipColor;
+      ctx.beginPath();
+      ctx.moveTo(0, -player.height / 2);
+      ctx.lineTo(-10, player.height / 2 - 5);
+      ctx.lineTo(10, player.height / 2 - 5);
+      ctx.closePath();
+      ctx.fill();
+
+      // コックピット（青ガラス）
+      ctx.fillStyle = '#00e5ff';
+      ctx.fillRect(-3, -8, 6, 12);
+
+      // エンジン噴射
+      ctx.fillStyle = player.invincibleTimer > 0 ? `hsl(${rainbowHue}, 100%, 50%)` : '#ff9100';
+      ctx.beginPath();
+      ctx.moveTo(-6, player.height / 2 - 5);
+      ctx.lineTo(0, player.height / 2 + 10 + Math.random() * 6);
+      ctx.lineTo(6, player.height / 2 - 5);
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.restore();
+
+      // プレイヤーの赤色（ブースト時はレインボー）レーザー描画
+      ctx.fillStyle = laserGlow;
+      ctx.shadowColor = laserGlow;
+      ctx.shadowBlur = 10;
+      playerBullets.forEach(bullet => {
+        ctx.fillRect(bullet.x - 2, bullet.y - 10, 4, 14);
+      });
+      ctx.shadowBlur = 0;
+    }
+  </script>
+</body>
+</html>
