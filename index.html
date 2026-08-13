@@ -137,12 +137,13 @@
     }
 
     #boost-indicator {
-      font-size: 12px;
-      font-weight: bold;
+      font-size: 13px;
+      font-weight: 900;
       text-align: center;
-      margin-top: 4px;
+      margin-top: 6px;
       color: #00e5ff;
-      text-shadow: 0 0 8px #00e5ff;
+      letter-spacing: 1px;
+      text-shadow: 0 0 10px #00e5ff;
     }
   </style>
 </head>
@@ -159,7 +160,7 @@
       <div class="progress-bar-bg">
         <div id="progress-fill"></div>
       </div>
-      <div id="boost-indicator" class="hidden">HYPER RAINBOW BOOST!!</div>
+      <div id="boost-indicator" class="hidden">HYPER RAINBOW BOOST: 3.0s</div>
     </div>
 
     <!-- スタート画面 -->
@@ -210,7 +211,7 @@
     let touchX = 0;
     let touchY = 0;
 
-    // プレイヤー（Xウイング風）
+    // プレイヤー（Xウイング）
     const player = {
       x: CANVAS_WIDTH / 2,
       y: CANVAS_HEIGHT - 120,
@@ -218,7 +219,7 @@
       height: 44,
       lastShot: 0,
       shotInterval: 10,
-      boostTimer: 0 // 無敵ブースト（ミリ秒）
+      boostTimer: 0
     };
 
     let playerBullets = [];
@@ -319,18 +320,19 @@
     function update() {
       hueOffset = (hueOffset + 6) % 360;
 
-      // 無敵ブーストタイマー計算
       if (player.boostTimer > 0) {
         player.boostTimer -= 1000 / 60;
+        const secondsLeft = Math.max(0, player.boostTimer / 1000).toFixed(1);
+        boostIndicator.innerText = `HYPER RAINBOW BOOST: ${secondsLeft}s`;
         boostIndicator.classList.remove('hidden');
-        boostIndicator.style.color = `hsl(${hueOffset}, 100%, 60%)`;
+        boostIndicator.style.color = `hsl(${hueOffset}, 100%, 65%)`;
+        boostIndicator.style.textShadow = `0 0 10px hsl(${hueOffset}, 100%, 65%)`;
       } else {
         boostIndicator.classList.add('hidden');
       }
 
       const isBoosted = player.boostTimer > 0;
 
-      // 進捗率
       distanceTraveled += PLAYER_SPEED;
       const progressRatio = Math.min(distanceTraveled / MISSION_DISTANCE, 1);
       progressFill.style.width = `${progressRatio * 100}%`;
@@ -342,7 +344,6 @@
         return;
       }
 
-      // 星のスクロール（ブースト時はハイパースペース演出）
       const starSpeedMult = isBoosted ? 8 : 1;
       stars.forEach(star => {
         star.y += star.speed * starSpeedMult;
@@ -352,7 +353,7 @@
         }
       });
 
-      // ショット（ブースト時は広角・高速）
+      // ショット
       player.lastShot++;
       const currentInterval = isBoosted ? 5 : player.shotInterval;
       if (player.lastShot >= currentInterval) {
@@ -368,7 +369,6 @@
         player.lastShot = 0;
       }
 
-      // 自機弾の移動
       playerBullets.forEach((bullet, index) => {
         bullet.x += bullet.vx;
         bullet.y += bullet.vy;
@@ -377,29 +377,38 @@
         }
       });
 
-      // 隕石/小惑星
+      // 障害物（小惑星）
       if (Math.random() < 0.035) {
         const size = Math.random() * 22 + 18;
+        const points = [];
+        const numPoints = 7;
+        for (let i = 0; i < numPoints; i++) {
+          points.push(0.75 + Math.random() * 0.5);
+        }
         obstacles.push({
           x: Math.random() * (CANVAS_WIDTH - size * 2) + size,
           y: -size,
           size: size,
+          points: points,
           hp: Math.floor(size / 8),
-          speed: Math.random() * 2 + 1.5
+          speed: Math.random() * 2 + 1.5,
+          angle: Math.random() * Math.PI * 2,
+          rotSpeed: (Math.random() - 0.5) * 0.04
         });
       }
       obstacles.forEach((obs, index) => {
         obs.y += obs.speed;
+        obs.angle += obs.rotSpeed;
         if (obs.y > CANVAS_HEIGHT + obs.size) obstacles.splice(index, 1);
       });
 
-      // 敵機（TIEファイター風）
+      // 敵機（タイ・ファイター）
       if (Math.random() < 0.018) {
         enemies.push({
-          x: Math.random() * (CANVAS_WIDTH - 50) + 25,
+          x: Math.random() * (CANVAS_WIDTH - 60) + 30,
           y: -30,
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           hp: 3,
           speed: 1.8,
           lastShot: 0
@@ -432,9 +441,8 @@
         }
       });
 
-      // ★【調整ポイント】R2エナジーポッド（補給ポイント）の出現確率を-40%カット
-      // (旧: 0.0035 -> 修正後: 0.0021)
-      if (Math.random() < 0.0021) {
+      // ★【調整】R2エナジーポッドの出現率をさらに2/3に（0.0021 -> 0.0014）
+      if (Math.random() < 0.0014) {
         energyPods.push({
           x: Math.random() * (CANVAS_WIDTH - 40) + 20,
           y: -20,
@@ -453,16 +461,13 @@
     function checkCollisions() {
       const isBoosted = player.boostTimer > 0;
 
-      // 1. エナジーポッド取得判定
       energyPods.forEach((pod, pIndex) => {
-        const dist = Math.hypot(player.x - pod.x, player.y - pod.y);
-        if (dist < pod.size + player.width / 2) {
-          player.boostTimer = 3000; // 3秒間無敵ブースト
+        if (Math.hypot(player.x - pod.x, player.y - pod.y) < pod.size + player.width / 2) {
+          player.boostTimer = 3000;
           energyPods.splice(pIndex, 1);
         }
       });
 
-      // 2. プレイヤー弾 vs 敵・障害物
       playerBullets.forEach((pb, pbIndex) => {
         obstacles.forEach((obs, obsIndex) => {
           if (Math.hypot(pb.x - obs.x, pb.y - obs.y) < obs.size) {
@@ -486,7 +491,6 @@
         });
       });
 
-      // 3. 自機 vs 障害物・敵機（無敵時は体当たり破壊）
       obstacles.forEach((obs, obsIndex) => {
         if (Math.hypot(player.x - obs.x, player.y - obs.y) < obs.size + player.width / 3) {
           if (isBoosted) {
@@ -510,11 +514,10 @@
         }
       });
 
-      // 4. 自機 vs 敵弾
       enemyBullets.forEach((eb, ebIndex) => {
         if (Math.hypot(player.x - eb.x, player.y - eb.y) < 6 + player.width / 4) {
           if (isBoosted) {
-            enemyBullets.splice(ebIndex, 1); // 弾を弾き飛ばす
+            enemyBullets.splice(ebIndex, 1);
           } else {
             triggerGameOver();
           }
@@ -535,7 +538,7 @@
       const isBoosted = player.boostTimer > 0;
       const mainColor = isBoosted ? `hsl(${hueOffset}, 100%, 60%)` : '#ff2a2a';
 
-      // 星（ブースト時はハイパースペースライン描画）
+      // 背景の星
       stars.forEach(star => {
         if (isBoosted) {
           ctx.strokeStyle = `hsl(${(hueOffset + star.y) % 360}, 100%, 70%)`;
@@ -568,7 +571,7 @@
         ctx.restore();
       });
 
-      // 自機（Xウイング風）
+      // 自機（Xウイング）
       ctx.save();
       ctx.translate(player.x, player.y);
 
@@ -576,7 +579,6 @@
         ctx.shadowColor = mainColor;
         ctx.shadowBlur = 20;
 
-        // レインボーオーラ
         ctx.strokeStyle = mainColor;
         ctx.lineWidth = 3;
         ctx.beginPath();
@@ -584,11 +586,9 @@
         ctx.stroke();
       }
 
-      // 機体色
       const shipBodyColor = isBoosted ? mainColor : '#e0e0e0';
       const wingColor = isBoosted ? mainColor : '#ff2a2a';
 
-      // 主翼（X型）
       ctx.strokeStyle = wingColor;
       ctx.lineWidth = 4;
       ctx.beginPath();
@@ -598,7 +598,6 @@
       ctx.lineTo(-player.width / 2, player.height / 2);
       ctx.stroke();
 
-      // ノーズ
       ctx.fillStyle = shipBodyColor;
       ctx.beginPath();
       ctx.moveTo(0, -player.height / 2);
@@ -607,13 +606,12 @@
       ctx.closePath();
       ctx.fill();
 
-      // コックピット
       ctx.fillStyle = isBoosted ? '#ffffff' : '#00e5ff';
       ctx.fillRect(-3, -player.height / 4, 6, 10);
 
       ctx.restore();
 
-      // 自機弾
+      // 自機弾（赤レーザー）
       playerBullets.forEach(b => {
         ctx.fillStyle = b.isBoosted ? `hsl(${hueOffset}, 100%, 65%)` : '#ff2a2a';
         ctx.shadowColor = ctx.fillStyle;
@@ -622,36 +620,74 @@
       });
       ctx.shadowBlur = 0;
 
-      // 障害物（小惑星）
+      // 障害物（ゴツゴツした小惑星/岩）
       obstacles.forEach(obs => {
-        ctx.fillStyle = '#4a4a5a';
-        ctx.beginPath();
-        ctx.arc(obs.x, obs.y, obs.size, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#6a6a7a';
+        ctx.save();
+        ctx.translate(obs.x, obs.y);
+        ctx.rotate(obs.angle);
+
+        ctx.fillStyle = '#5c544d';
+        ctx.strokeStyle = '#8a8075';
         ctx.lineWidth = 2;
+
+        ctx.beginPath();
+        const numPoints = obs.points.length;
+        for (let i = 0; i < numPoints; i++) {
+          const a = (i / numPoints) * Math.PI * 2;
+          const r = obs.size * obs.points[i];
+          const px = Math.cos(a) * r;
+          const py = Math.sin(a) * r;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
         ctx.stroke();
+
+        ctx.restore();
       });
 
-      // 敵機（TIEファイター風）
+      // 敵機（タイ・ファイター）
       enemies.forEach(enemy => {
         ctx.save();
         ctx.translate(enemy.x, enemy.y);
 
-        ctx.fillStyle = '#1a1a24';
-        ctx.strokeStyle = '#00e5ff';
-        ctx.lineWidth = 2;
+        const wingW = 6;
+        const wingH = enemy.height;
 
-        // 両翼
-        ctx.fillRect(-enemy.width / 2, -enemy.height / 2, 6, enemy.height);
-        ctx.fillRect(enemy.width / 2 - 6, -enemy.height / 2, 6, enemy.height);
+        ctx.fillStyle = '#111118';
+        ctx.strokeStyle = '#8899aa';
+        ctx.lineWidth = 1.5;
 
-        // 中央シャフト & コックピット
-        ctx.fillRect(-enemy.width / 2, -2, enemy.width, 4);
+        // 左翼
         ctx.beginPath();
-        ctx.arc(0, 0, 8, 0, Math.PI * 2);
+        ctx.rect(-enemy.width / 2, -wingH / 2, wingW, wingH);
         ctx.fill();
         ctx.stroke();
+
+        // 右翼
+        ctx.beginPath();
+        ctx.rect(enemy.width / 2 - wingW, -wingH / 2, wingW, wingH);
+        ctx.fill();
+        ctx.stroke();
+
+        // 中央接続アーム
+        ctx.fillStyle = '#778899';
+        ctx.fillRect(-enemy.width / 2 + wingW, -2, enemy.width - wingW * 2, 4);
+
+        // 中央ポッド
+        ctx.fillStyle = '#445566';
+        ctx.beginPath();
+        ctx.arc(0, 0, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#8899aa';
+        ctx.stroke();
+
+        // コクピットウィンドウ
+        ctx.fillStyle = '#050508';
+        ctx.beginPath();
+        ctx.arc(0, 0, 4, 0, Math.PI * 2);
+        ctx.fill();
 
         ctx.restore();
       });
@@ -659,7 +695,7 @@
       // 敵レーザー（緑）
       ctx.fillStyle = '#00ff66';
       ctx.shadowColor = '#00ff66';
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 8;
       enemyBullets.forEach(eb => {
         ctx.beginPath();
         ctx.arc(eb.x, eb.y, 4, 0, Math.PI * 2);
